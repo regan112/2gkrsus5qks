@@ -7,3 +7,4 @@
   7) 프로젝트의 한계 및 더 해 보고 싶은 것
   8) 프로젝트 과정에서 느끼고 배운 점
   9) 생성형 AI 활용 명시 + 참고문헌
+https://www.kaggle.com/datasets/dhrubangtalukdar/telco-customer-churn-data
