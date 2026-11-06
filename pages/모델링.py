@@ -2,10 +2,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
-from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
     recall_score, f1_score, precision_score, accuracy_score,
@@ -43,7 +44,7 @@ KOR_VALUES = {
 @st.cache_data
 def load_data(path):
     data = pd.read_csv(path)
-    data = data.drop(columns=["CustomerID"])  # 식별자는 예측에 불필요
+    data = data.drop(columns=["CustomerID"])
     for col, mapping in KOR_VALUES.items():
         data[col] = data[col].replace(mapping)
     data["Churn"] = data["Churn"].map({"Yes": 1, "No": 0})
@@ -64,6 +65,131 @@ for c in num_features:
 for c in cat_features:
     df[c] = df[c].fillna(df[c].mode()[0])
 df = df.dropna(subset=["이탈여부"])
+
+# ---------------- 트리 시각화 함수 (Plotly) ----------------
+def plotly_tree(model, feature_names, max_depth_show=3):
+    """sklearn 의사결정트리를 Plotly 그래프로 그린다."""
+    t = model.tree_
+    positions = {}   # 노드 번호 -> (x, y)
+    visible = []     # 화면에 표시할 노드
+    counter = {"x": 0}
+
+    def layout(node, depth):
+        """왼쪽 -> 오른쪽 순서로 리프에 x좌표를 배정(중위 순회)."""
+        if depth > max_depth_show:
+            return None
+        left, right = t.children_left[node], t.children_right[node]
+        is_leaf = left == -1 or depth == max_depth_show
+        visible.append(node)
+        if is_leaf:
+            x = counter["x"]
+            counter["x"] += 1
+        else:
+            lx = layout(left, depth + 1)
+            rx = layout(right, depth + 1)
+            x = (lx + rx) / 2
+        positions[node] = (x, -depth)
+        return x
+
+    layout(0, 0)
+
+    fig = go.Figure()
+
+    # 선(간선) 그리기
+    for node in visible:
+        left, right = t.children_left[node], t.children_right[node]
+        if left == -1:
+            continue
+        for child, label in [(left, "예"), (right, "아니오")]:
+            if child in positions:
+                x0, y0 = positions[node]
+                x1, y1 = positions[child]
+                fig.add_trace(go.Scatter(
+                    x=[x0, x1], y=[y0, y1], mode="lines",
+                    line=dict(color="gray", width=1),
+                    hoverinfo="skip", showlegend=False,
+                ))
+                fig.add_annotation(
+                    x=(x0 + x1) / 2, y=(y0 + y1) / 2, text=label,
+                    showarrow=False, font=dict(size=10, color="dimgray"),
+                )
+
+    # 노드 그리기
+    xs, ys, colors, texts, hovers = [], [], [], [], []
+    for node in visible:
+        x, y = positions[node]
+        counts = t.value[node][0]
+        total = counts.sum()
+        churn_prob = counts[1] / total if total > 0 else 0
+        n_samples = int(t.n_node_samples[node])
+        left = t.children_left[node]
+        is_split = left != -1 and node in [n for n in visible if (t.children_left[n] in positions)]
+
+        if is_split:
+            fname = feature_names[t.feature[node]]
+            cond = f"{fname} ≤ {t.threshold[node]:.2f}"
+        else:
+            cond = "마지막 노드(리프)"
+
+        xs.append(x)
+        ys.append(y)
+        colors.append(churn_prob)
+        texts.append(f"{cond}<br>이탈확률 {churn_prob*100:.1f}%" if is_split
+                     else f"이탈확률<br>{churn_prob*100:.1f}%")
+        hovers.append(
+            f"<b>{cond}</b><br>샘플 수: {n_samples:,}<br>"
+            f"이탈 확률: {churn_prob*100:.1f}%<br>"
+            f"예측: {'이탈' if churn_prob >= 0.5 else '유지'}"
+        )
+
+    fig.add_trace(go.Scatter(
+        x=xs, y=ys, mode="markers+text",
+        marker=dict(
+            size=34, color=colors, colorscale="RdBu_r", cmin=0, cmax=1,
+            line=dict(width=1, color="black"),
+            colorbar=dict(title="이탈 확률"),
+        ),
+        text=texts, textposition="top center", textfont=dict(size=10),
+        hovertext=hovers, hoverinfo="text", showlegend=False,
+    ))
+
+    fig.update_layout(
+        title="의사결정트리 구조 (노드 색: 빨강=이탈 확률 높음, 파랑=낮음)",
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        height=250 * (max_depth_show + 1),
+        plot_bgcolor="white",
+        margin=dict(t=60, b=20),
+    )
+    return fig
+
+
+def tree_rules_text(model, feature_names):
+    """리프 노드까지의 규칙을 문장 표로 정리한다."""
+    t = model.tree_
+    rules = []
+
+    def walk(node, conds):
+        left, right = t.children_left[node], t.children_right[node]
+        if left == -1:
+            counts = t.value[node][0]
+            total = counts.sum()
+            prob = counts[1] / total if total > 0 else 0
+            rules.append({
+                "규칙": " 그리고 ".join(conds) if conds else "(전체)",
+                "샘플 수": int(t.n_node_samples[node]),
+                "이탈 확률(%)": round(prob * 100, 1),
+                "예측": "이탈" if prob >= 0.5 else "유지",
+            })
+            return
+        name = feature_names[t.feature[node]]
+        thr = t.threshold[node]
+        walk(left, conds + [f"{name} ≤ {thr:.2f}"])
+        walk(right, conds + [f"{name} > {thr:.2f}"])
+
+    walk(0, [])
+    return pd.DataFrame(rules)
+
 
 # ---------------- 1. 데이터 탐색 ----------------
 st.header("1. 이탈 현황 탐색")
@@ -113,7 +239,6 @@ rf_trees = st.sidebar.slider("트리 개수", 50, 300, 100, 50)
 rf_depth = st.sidebar.slider("포레스트 트리 최대 깊이", 3, 20, 8)
 rf_leaf = st.sidebar.slider("포레스트 리프 최소 샘플 수", 1, 200, 50)
 
-# 원-핫 인코딩
 X = pd.get_dummies(df[num_features + cat_features], columns=cat_features, drop_first=False)
 y = df["이탈여부"].astype(int)
 
@@ -121,7 +246,6 @@ X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=test_size, random_state=42, stratify=y
 )
 
-# 로지스틱 회귀는 스케일링 필요
 scaler = StandardScaler()
 X_train_sc = scaler.fit_transform(X_train)
 X_test_sc = scaler.transform(X_test)
@@ -192,7 +316,6 @@ st.info(
     "이탈 예측에서는 이탈할 고객을 놓치지 않는 것이 중요해서 재현율을 중요하게 봅니다."
 )
 
-# 혼동행렬
 st.subheader("혼동 행렬")
 cols = st.columns(3)
 for col, (name, pred) in zip(cols, preds.items()):
@@ -210,7 +333,7 @@ st.header("4. 어떤 데이터가 이탈로 이어지는가?")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "로지스틱 회귀 계수", "의사결정트리 중요도", "랜덤 포레스트 중요도",
-    "모델별 중요도 비교", "트리 구조"
+    "모델별 중요도 비교", "의사결정트리 구조"
 ])
 
 with tab1:
@@ -250,13 +373,17 @@ with tab4:
     st.caption("세 모델이 공통으로 중요하게 보는 변수가 이탈의 핵심 요인일 가능성이 높습니다.")
 
 with tab5:
-    import matplotlib.pyplot as plt
     show_depth = st.slider("표시할 트리 깊이", 1, 4, 3)
-    fig, ax = plt.subplots(figsize=(20, 9))
-    plot_tree(dt, feature_names=list(X.columns), class_names=["유지", "이탈"],
-              max_depth=show_depth, filled=True, fontsize=8, ax=ax)
-    st.pyplot(fig)
-    st.caption("트리 그림은 matplotlib을 사용하므로 한글이 깨질 수 있습니다. 깨지면 이 탭은 건너뛰어도 됩니다.")
+    fig = plotly_tree(dt, list(X.columns), max_depth_show=show_depth)
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption("노드에 마우스를 올리면 분기 조건, 샘플 수, 이탈 확률이 표시됩니다. "
+               "조건이 참이면 '예'(왼쪽), 거짓이면 '아니오'(오른쪽)로 갑니다. "
+               "원-핫 인코딩된 변수(예: 계약형태_월 단위)는 0 또는 1 값이라 '≤ 0.50'은 '해당하지 않음'을 뜻합니다.")
+
+    st.subheader("트리가 만든 규칙 표")
+    rules = tree_rules_text(dt, list(X.columns))
+    st.dataframe(rules.sort_values("이탈 확률(%)", ascending=False),
+                 hide_index=True, use_container_width=True)
 
 # ---------------- 5. 직접 예측 ----------------
 st.header("5. 가상 고객 이탈 예측해 보기")
