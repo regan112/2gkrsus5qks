@@ -66,16 +66,15 @@ for c in cat_features:
     df[c] = df[c].fillna(df[c].mode()[0])
 df = df.dropna(subset=["이탈여부"])
 
+
 # ---------------- 트리 시각화 함수 (Plotly) ----------------
 def plotly_tree(model, feature_names, max_depth_show=3):
-    """sklearn 의사결정트리를 Plotly 그래프로 그린다."""
     t = model.tree_
-    positions = {}   # 노드 번호 -> (x, y)
-    visible = []     # 화면에 표시할 노드
+    positions = {}
+    visible = []
     counter = {"x": 0}
 
     def layout(node, depth):
-        """왼쪽 -> 오른쪽 순서로 리프에 x좌표를 배정(중위 순회)."""
         if depth > max_depth_show:
             return None
         left, right = t.children_left[node], t.children_right[node]
@@ -95,7 +94,6 @@ def plotly_tree(model, feature_names, max_depth_show=3):
 
     fig = go.Figure()
 
-    # 선(간선) 그리기
     for node in visible:
         left, right = t.children_left[node], t.children_right[node]
         if left == -1:
@@ -114,7 +112,6 @@ def plotly_tree(model, feature_names, max_depth_show=3):
                     showarrow=False, font=dict(size=10, color="dimgray"),
                 )
 
-    # 노드 그리기
     xs, ys, colors, texts, hovers = [], [], [], [], []
     for node in visible:
         x, y = positions[node]
@@ -123,7 +120,7 @@ def plotly_tree(model, feature_names, max_depth_show=3):
         churn_prob = counts[1] / total if total > 0 else 0
         n_samples = int(t.n_node_samples[node])
         left = t.children_left[node]
-        is_split = left != -1 and node in [n for n in visible if (t.children_left[n] in positions)]
+        is_split = left != -1 and left in positions
 
         if is_split:
             fname = feature_names[t.feature[node]]
@@ -165,7 +162,6 @@ def plotly_tree(model, feature_names, max_depth_show=3):
 
 
 def tree_rules_text(model, feature_names):
-    """리프 노드까지의 규칙을 문장 표로 정리한다."""
     t = model.tree_
     rules = []
 
@@ -230,6 +226,15 @@ test_size = st.sidebar.slider("테스트 데이터 비율", 0.1, 0.4, 0.2, 0.05)
 use_balance = st.sidebar.checkbox("클래스 불균형 보정 (class_weight='balanced')", value=True)
 threshold = st.sidebar.slider("이탈 판정 임계값 (확률)", 0.1, 0.9, 0.5, 0.05)
 
+st.sidebar.subheader("로지스틱 회귀")
+C_value = st.sidebar.select_slider(
+    "C (규제 강도의 역수, 작을수록 규제 강함)",
+    options=[0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+    value=1.0,
+)
+penalty_kor = st.sidebar.selectbox("규제 방식 (penalty)", ["l2", "l1", "없음"])
+lr_max_iter = st.sidebar.slider("최대 반복 횟수 (max_iter)", 100, 3000, 1000, 100)
+
 st.sidebar.subheader("의사결정트리")
 max_depth = st.sidebar.slider("트리 최대 깊이", 2, 15, 5)
 min_leaf = st.sidebar.slider("리프 노드 최소 샘플 수", 1, 200, 50)
@@ -254,9 +259,19 @@ cw = "balanced" if use_balance else None
 
 
 @st.cache_resource(show_spinner="모델 학습 중...")
-def train_models(_Xtr_sc, _Xtr, _ytr, cw, test_size, max_depth, min_leaf,
-                 rf_trees, rf_depth, rf_leaf):
-    lr = LogisticRegression(max_iter=1000, class_weight=cw)
+def train_models(_Xtr_sc, _Xtr, _ytr, cw, test_size,
+                 C_value, penalty_kor, lr_max_iter,
+                 max_depth, min_leaf, rf_trees, rf_depth, rf_leaf):
+    # 로지스틱 회귀: penalty에 따라 solver 자동 선택
+    if penalty_kor == "l1":
+        lr = LogisticRegression(C=C_value, penalty="l1", solver="saga",
+                                max_iter=lr_max_iter, class_weight=cw)
+    elif penalty_kor == "l2":
+        lr = LogisticRegression(C=C_value, penalty="l2", solver="lbfgs",
+                                max_iter=lr_max_iter, class_weight=cw)
+    else:
+        lr = LogisticRegression(penalty=None, solver="lbfgs",
+                                max_iter=lr_max_iter, class_weight=cw)
     lr.fit(_Xtr_sc, _ytr)
 
     dt = DecisionTreeClassifier(max_depth=max_depth, min_samples_leaf=min_leaf,
@@ -271,7 +286,11 @@ def train_models(_Xtr_sc, _Xtr, _ytr, cw, test_size, max_depth, min_leaf,
 
 
 lr, dt, rf = train_models(X_train_sc, X_train, y_train, cw, test_size,
+                          C_value, penalty_kor, lr_max_iter,
                           max_depth, min_leaf, rf_trees, rf_depth, rf_leaf)
+
+if penalty_kor == "없음":
+    st.sidebar.caption("규제 없음일 때는 C 값이 사용되지 않습니다.")
 
 lr_proba = lr.predict_proba(X_test_sc)[:, 1]
 dt_proba = dt.predict_proba(X_test)[:, 1]
@@ -282,6 +301,19 @@ preds = {
     "의사결정트리": (dt_proba >= threshold).astype(int),
     "랜덤 포레스트": (rf_proba >= threshold).astype(int),
 }
+
+# 현재 로지스틱 회귀 설정 표시
+st.subheader("현재 로지스틱 회귀 하이퍼파라미터")
+st.dataframe(pd.DataFrame({
+    "하이퍼파라미터": ["C", "penalty", "solver", "max_iter", "class_weight"],
+    "값": [
+        C_value if penalty_kor != "없음" else "사용 안 함",
+        penalty_kor,
+        lr.solver,
+        lr_max_iter,
+        str(cw),
+    ],
+}), hide_index=True)
 
 # ---------------- 3. 성능 비교 ----------------
 st.header("3. 모델 성능 비교 (재현율 · F1 중심)")
@@ -344,7 +376,9 @@ with tab1:
                  color_discrete_map={"이탈 증가": "tomato", "이탈 감소": "steelblue"},
                  title="로지스틱 회귀 계수 (표준화 기준, 양수=이탈 증가)")
     st.plotly_chart(fig, use_container_width=True)
-    st.caption("수치형 변수는 표준화되어 있어 계수 크기를 서로 비교할 수 있습니다.")
+    n_zero = int((lr.coef_[0] == 0).sum())
+    st.caption(f"수치형 변수는 표준화되어 있어 계수 크기를 서로 비교할 수 있습니다. "
+               f"현재 계수가 0인 변수: {n_zero}개 (l1 규제에서 변수가 제거되면 늘어납니다.)")
 
 with tab2:
     imp = pd.DataFrame({"변수": X.columns, "중요도": dt.feature_importances_}).sort_values("중요도")
@@ -359,9 +393,11 @@ with tab3:
     st.plotly_chart(fig, use_container_width=True)
 
 with tab4:
+    abs_coef = np.abs(lr.coef_[0])
+    coef_ratio = abs_coef / abs_coef.sum() if abs_coef.sum() > 0 else abs_coef
     comp = pd.DataFrame({
         "변수": X.columns,
-        "로지스틱 회귀(|계수| 비율)": np.abs(lr.coef_[0]) / np.abs(lr.coef_[0]).sum(),
+        "로지스틱 회귀(|계수| 비율)": coef_ratio,
         "의사결정트리": dt.feature_importances_,
         "랜덤 포레스트": rf.feature_importances_,
     })
