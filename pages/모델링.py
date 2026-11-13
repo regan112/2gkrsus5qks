@@ -3,11 +3,12 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.dummy import DummyClassifier
 from sklearn.metrics import (
     recall_score, f1_score, precision_score, accuracy_score,
     confusion_matrix
@@ -15,7 +16,7 @@ from sklearn.metrics import (
 
 st.set_page_config(page_title="고객 이탈 분류 모델", layout="wide")
 st.title("📡 어떤 데이터가 통신사 고객 이탈로 이어지는가?")
-st.caption("분석 방식: 로지스틱 회귀 · 의사결정트리 · 랜덤 포레스트 | 평가 지표: 재현율(Recall), F1")
+st.caption("분석 방식: 베이스라인 · 로지스틱 회귀 · 의사결정트리 · 랜덤 포레스트 | 평가 지표: 재현율(Recall), F1")
 
 FILE_PATH = "synthetic_customer_churn_100k.csv"
 
@@ -225,6 +226,7 @@ st.sidebar.header("⚙️ 모델 설정")
 test_size = st.sidebar.slider("테스트 데이터 비율", 0.1, 0.4, 0.2, 0.05)
 use_balance = st.sidebar.checkbox("클래스 불균형 보정 (class_weight='balanced')", value=True)
 threshold = st.sidebar.slider("이탈 판정 임계값 (확률)", 0.1, 0.9, 0.5, 0.05)
+st.sidebar.caption("베이스라인은 항상 최빈 클래스로 예측하므로 설정의 영향을 받지 않습니다.")
 
 st.sidebar.subheader("로지스틱 회귀")
 C_value = st.sidebar.select_slider(
@@ -262,7 +264,10 @@ cw = "balanced" if use_balance else None
 def train_models(_Xtr_sc, _Xtr, _ytr, cw, test_size,
                  C_value, penalty_kor, lr_max_iter,
                  max_depth, min_leaf, rf_trees, rf_depth, rf_leaf):
-    # 로지스틱 회귀: penalty에 따라 solver 자동 선택
+    # 베이스라인: 훈련 데이터에서 가장 많은 클래스로 무조건 예측
+    base = DummyClassifier(strategy="most_frequent")
+    base.fit(_Xtr, _ytr)
+
     if penalty_kor == "l1":
         lr = LogisticRegression(C=C_value, penalty="l1", solver="saga",
                                 max_iter=lr_max_iter, class_weight=cw)
@@ -282,27 +287,32 @@ def train_models(_Xtr_sc, _Xtr, _ytr, cw, test_size,
                                 min_samples_leaf=rf_leaf, class_weight=cw,
                                 random_state=42, n_jobs=-1)
     rf.fit(_Xtr, _ytr)
-    return lr, dt, rf
+    return base, lr, dt, rf
 
 
-lr, dt, rf = train_models(X_train_sc, X_train, y_train, cw, test_size,
-                          C_value, penalty_kor, lr_max_iter,
-                          max_depth, min_leaf, rf_trees, rf_depth, rf_leaf)
+base, lr, dt, rf = train_models(X_train_sc, X_train, y_train, cw, test_size,
+                                C_value, penalty_kor, lr_max_iter,
+                                max_depth, min_leaf, rf_trees, rf_depth, rf_leaf)
 
 if penalty_kor == "없음":
     st.sidebar.caption("규제 없음일 때는 C 값이 사용되지 않습니다.")
 
+base_pred = base.predict(X_test)  # 임계값과 무관하게 항상 최빈 클래스
 lr_proba = lr.predict_proba(X_test_sc)[:, 1]
 dt_proba = dt.predict_proba(X_test)[:, 1]
 rf_proba = rf.predict_proba(X_test)[:, 1]
 
 preds = {
+    "베이스라인(최빈값)": base_pred,
     "로지스틱 회귀": (lr_proba >= threshold).astype(int),
     "의사결정트리": (dt_proba >= threshold).astype(int),
     "랜덤 포레스트": (rf_proba >= threshold).astype(int),
 }
 
-# 현재 로지스틱 회귀 설정 표시
+majority_label = "유지" if int(base.classes_[np.argmax(base.class_prior_)]) == 0 else "이탈"
+st.info(f"🧪 베이스라인 모델은 모든 고객을 **'{majority_label}'** 으로 예측합니다 "
+        f"(훈련 데이터에서 가장 많은 클래스).")
+
 st.subheader("현재 로지스틱 회귀 하이퍼파라미터")
 st.dataframe(pd.DataFrame({
     "하이퍼파라미터": ["C", "penalty", "solver", "max_iter", "class_weight"],
@@ -331,27 +341,37 @@ def metrics(y_true, y_pred):
 result = pd.DataFrame({name: metrics(y_test, p) for name, p in preds.items()}).T.round(4)
 st.dataframe(result)
 
-best_f1 = result["F1"].idxmax()
-best_recall = result["재현율(Recall)"].idxmax()
-st.success(f"🏆 F1이 가장 높은 모델: **{best_f1}** | 재현율이 가장 높은 모델: **{best_recall}**")
+# 최고 모델은 베이스라인을 제외하고 선정
+result_models = result.drop(index="베이스라인(최빈값)")
+best_f1 = result_models["F1"].idxmax()
+best_recall = result_models["재현율(Recall)"].idxmax()
+st.success(f"🏆 F1이 가장 높은 모델: **{best_f1}** | 재현율이 가장 높은 모델: **{best_recall}** "
+           f"(베이스라인 제외)")
+
+# 베이스라인 대비 향상 정도
+base_row = result.loc["베이스라인(최빈값)"]
+gain = (result_models - base_row).round(4)
+st.subheader("베이스라인 대비 향상 정도 (모델 점수 − 베이스라인 점수)")
+st.dataframe(gain)
 
 res_long = result.reset_index().melt(id_vars="index", var_name="지표", value_name="점수")
 res_long.columns = ["모델", "지표", "점수"]
 fig = px.bar(res_long, x="지표", y="점수", color="모델", barmode="group",
-             text_auto=".3f", title="모델별 성능 지표 비교")
+             text_auto=".3f", title="모델별 성능 지표 비교 (베이스라인 포함)")
 fig.update_layout(yaxis_range=[0, 1])
 st.plotly_chart(fig, use_container_width=True)
 
 st.info(
     "💡 **재현율**은 실제 이탈 고객 중 모델이 찾아낸 비율, "
     "**F1**은 재현율과 정밀도의 조화평균입니다. "
-    "이탈 예측에서는 이탈할 고객을 놓치지 않는 것이 중요해서 재현율을 중요하게 봅니다."
+    "이탈 예측에서는 이탈할 고객을 놓치지 않는 것이 중요해서 재현율을 중요하게 봅니다. "
+    "베이스라인의 정확도와 비교해, 정확도만으로는 모델의 가치를 판단하기 어렵다는 점도 확인해 보세요."
 )
 
 st.subheader("혼동 행렬")
-cols = st.columns(3)
+cols = st.columns(4)
 for col, (name, pred) in zip(cols, preds.items()):
-    cm = confusion_matrix(y_test, pred)
+    cm = confusion_matrix(y_test, pred, labels=[0, 1])
     fig = px.imshow(
         cm, text_auto=True, color_continuous_scale="Blues",
         x=["예측: 유지", "예측: 이탈"], y=["실제: 유지", "실제: 이탈"],
@@ -406,7 +426,8 @@ with tab4:
                  orientation="h", title="모델별 변수 중요도 비교 (합이 1이 되도록 정규화)",
                  height=700)
     st.plotly_chart(fig, use_container_width=True)
-    st.caption("세 모델이 공통으로 중요하게 보는 변수가 이탈의 핵심 요인일 가능성이 높습니다.")
+    st.caption("세 모델이 공통으로 중요하게 보는 변수가 이탈의 핵심 요인일 가능성이 높습니다. "
+               "(베이스라인은 변수를 전혀 쓰지 않으므로 중요도가 없습니다.)")
 
 with tab5:
     show_depth = st.slider("표시할 트리 깊이", 1, 4, 3)
@@ -438,10 +459,110 @@ new = pd.DataFrame([{
 }])
 new_enc = pd.get_dummies(new, columns=cat_features).reindex(columns=X.columns, fill_value=0)
 
+p_base = base.predict(new_enc)[0]
 p_lr = lr.predict_proba(scaler.transform(new_enc))[0, 1]
 p_dt = dt.predict_proba(new_enc)[0, 1]
 p_rf = rf.predict_proba(new_enc)[0, 1]
-m1, m2, m3 = st.columns(3)
+m0, m1, m2, m3 = st.columns(4)
+m0.metric("베이스라인 예측", "이탈" if p_base == 1 else "유지")
 m1.metric("로지스틱 회귀 이탈 확률", f"{p_lr*100:.1f}%")
 m2.metric("의사결정트리 이탈 확률", f"{p_dt*100:.1f}%")
 m3.metric("랜덤 포레스트 이탈 확률", f"{p_rf*100:.1f}%")
+
+# ---------------- 6. 로지스틱 회귀 최적 하이퍼파라미터 탐색 ----------------
+st.header("6. 로지스틱 회귀 최적 하이퍼파라미터 탐색 (GridSearchCV)")
+st.write("교차검증으로 여러 조합을 비교해 가장 좋은 값을 찾습니다. "
+         "**훈련 데이터만** 사용하고, 테스트 데이터는 마지막 확인에만 씁니다.")
+
+g1, g2, g3 = st.columns(3)
+scoring_kor = g1.selectbox("최적화 기준", ["F1", "재현율(Recall)"])
+cv_folds = g2.slider("교차검증 분할 수 (cv)", 3, 5, 3)
+search_n = g3.slider("탐색에 사용할 훈련 샘플 수", 5000, len(X_train), min(20000, len(X_train)), 5000)
+
+search_C = st.multiselect("탐색할 C 값", [0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+                          default=[0.001, 0.01, 0.1, 1.0, 10.0, 100.0])
+search_penalty = st.multiselect("탐색할 규제 방식", ["l2", "l1"], default=["l2", "l1"])
+search_cw = st.multiselect("탐색할 class_weight", ["balanced", "없음"], default=["balanced", "없음"])
+
+if st.button("🔍 최적 하이퍼파라미터 찾기"):
+    if not (search_C and search_penalty and search_cw):
+        st.warning("각 항목에서 최소 1개 이상 선택해 주세요.")
+    else:
+        scoring = "f1" if scoring_kor == "F1" else "recall"
+
+        if search_n < len(X_train):
+            Xs, _, ys, _ = train_test_split(
+                X_train_sc, y_train, train_size=search_n,
+                random_state=42, stratify=y_train
+            )
+        else:
+            Xs, ys = X_train_sc, y_train
+
+        param_grid = {
+            "C": search_C,
+            "penalty": search_penalty,
+            "class_weight": [None if c == "없음" else c for c in search_cw],
+        }
+        n_combo = len(search_C) * len(search_penalty) * len(search_cw)
+        st.write(f"총 {n_combo}개 조합 × {cv_folds}-fold 교차검증 = {n_combo * cv_folds}번 학습")
+
+        grid = GridSearchCV(
+            LogisticRegression(solver="saga", max_iter=lr_max_iter),
+            param_grid,
+            scoring=scoring,
+            cv=StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42),
+            n_jobs=-1,
+            return_train_score=True,
+        )
+        with st.spinner("탐색 중입니다. 잠시만 기다려 주세요..."):
+            grid.fit(Xs, ys)
+
+        st.session_state["grid"] = grid
+        st.session_state["scoring_kor"] = scoring_kor
+
+if "grid" in st.session_state:
+    grid = st.session_state["grid"]
+    scoring_kor_done = st.session_state["scoring_kor"]
+    best = grid.best_params_
+
+    st.success(f"✅ 최적 파라미터: **{best}**")
+    st.metric(f"교차검증 {scoring_kor_done} (평균)", f"{grid.best_score_:.4f}")
+
+    cvr = pd.DataFrame(grid.cv_results_)
+    table = pd.DataFrame({
+        "C": cvr["param_C"],
+        "penalty": cvr["param_penalty"],
+        "class_weight": cvr["param_class_weight"].astype(str),
+        "검증 점수(평균)": cvr["mean_test_score"].round(4),
+        "검증 점수(표준편차)": cvr["std_test_score"].round(4),
+        "훈련 점수(평균)": cvr["mean_train_score"].round(4),
+        "순위": cvr["rank_test_score"],
+    }).sort_values("순위")
+    st.dataframe(table, hide_index=True, use_container_width=True)
+
+    plot_df = table.copy()
+    plot_df["C"] = plot_df["C"].astype(float)
+    plot_df["설정"] = plot_df["penalty"] + " / " + plot_df["class_weight"]
+    fig = px.line(plot_df.sort_values("C"), x="C", y="검증 점수(평균)", color="설정",
+                  markers=True, log_x=True,
+                  title=f"C 값에 따른 교차검증 {scoring_kor_done} 점수")
+    fig.update_layout(xaxis_title="C (로그 눈금)", yaxis_title=f"{scoring_kor_done}")
+    st.plotly_chart(fig, use_container_width=True)
+
+    best_lr = LogisticRegression(
+        C=best["C"], penalty=best["penalty"], solver="saga",
+        class_weight=best["class_weight"], max_iter=lr_max_iter
+    )
+    best_lr.fit(X_train_sc, y_train)
+    best_pred = (best_lr.predict_proba(X_test_sc)[:, 1] >= threshold).astype(int)
+    cur_pred = preds["로지스틱 회귀"]
+
+    compare = pd.DataFrame({
+        "베이스라인(최빈값)": metrics(y_test, base_pred),
+        "현재 설정": metrics(y_test, cur_pred),
+        "탐색으로 찾은 최적 설정": metrics(y_test, best_pred),
+    }).T.round(4)
+    st.subheader("테스트 데이터 성능: 베이스라인 vs 현재 설정 vs 최적 설정")
+    st.dataframe(compare)
+    st.caption("최적 설정을 사이드바에 직접 입력해 보면 위 3번 성능 비교에도 반영됩니다. "
+               "(class_weight는 사이드바의 '클래스 불균형 보정' 체크박스로 설정)")
