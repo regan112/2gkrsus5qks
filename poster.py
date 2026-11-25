@@ -48,3 +48,541 @@ poster_html = f"""
 <meta charset="UTF-8">
 <style>
   @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+  
+  * {{
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  }}
+
+  body {{
+    background-color: #e9ecef;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+  }}
+
+  /* A1 비율 컨테이너 (594mm x 841mm 비율 유지) */
+  .poster-a1 {{
+    width: 1188px;
+    min-height: 1682px;
+    background: #ffffff;
+    padding: 44px 50px;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.15);
+    color: #1a202c;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }}
+
+  /* 헤더 */
+  .header {{
+    border-bottom: 4px solid #1e3a8a;
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+  }}
+  .header h1 {{
+    font-size: 42px;
+    font-weight: 800;
+    color: #0f172a;
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+  }}
+  .header .team {{
+    font-size: 19px;
+    font-weight: 700;
+    color: #1e40af;
+    margin-bottom: 4px;
+  }}
+  .header .sub {{
+    font-size: 15.5px;
+    font-weight: 500;
+    color: #475569;
+  }}
+
+  /* 요약 박스 */
+  .summary-box {{
+    background-color: #eff6ff;
+    border-left: 7px solid #1d4ed8;
+    padding: 18px 24px;
+    margin-bottom: 24px;
+    border-radius: 0 8px 8px 0;
+  }}
+  .summary-box h2 {{
+    font-size: 20px;
+    font-weight: 800;
+    color: #1e3a8a;
+    margin-bottom: 8px;
+  }}
+  .summary-box p {{
+    font-size: 15.5px;
+    line-height: 1.52;
+    margin-bottom: 5px;
+  }}
+  .summary-box strong {{
+    color: #1e3a8a;
+  }}
+
+  /* 2단 메인 그리드 */
+  .main-grid {{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 34px;
+    flex-grow: 1;
+  }}
+
+  .section {{
+    margin-bottom: 22px;
+  }}
+  .section-title {{
+    font-size: 22px;
+    font-weight: 800;
+    color: #0f172a;
+    border-bottom: 2.5px solid #1e3a8a;
+    padding-bottom: 5px;
+    margin-bottom: 12px;
+  }}
+  .body-text {{
+    font-size: 15.2px;
+    line-height: 1.58;
+    color: #2d3748;
+    text-align: justify;
+    margin-bottom: 8px;
+  }}
+
+  /* 그래프 카드 공통 */
+  .chart-card {{
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 14px;
+    margin: 10px 0;
+  }}
+  .chart-caption {{
+    font-size: 13.5px;
+    color: #475569;
+    margin-top: 8px;
+    font-weight: 600;
+  }}
+
+  /* 그래프 1: 계약형태별 이탈률 */
+  .bar-group-contract {{
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-around;
+    height: 135px;
+    padding-top: 20px;
+    border-bottom: 2px solid #cbd5e1;
+  }}
+  .c-bar-wrap {{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 24%;
+  }}
+  .c-bar {{
+    width: 100%;
+    background: #f97316;
+    border-radius: 4px 4px 0 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 5px;
+    color: white;
+    font-weight: 700;
+    font-size: 13.5px;
+  }}
+  .c-bar.highlight {{
+    background: #ef4444;
+  }}
+  .c-label {{
+    margin-top: 6px;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #334155;
+  }}
+
+  /* 파이프라인 플로우차트 */
+  .pipeline {{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 12px 0;
+    gap: 4px;
+  }}
+  .pipe-step {{
+    border: 1.5px solid #93c5fd;
+    background: #eff6ff;
+    border-radius: 6px;
+    padding: 7px 4px;
+    text-align: center;
+    font-size: 12.2px;
+    font-weight: 700;
+    color: #1e3a8a;
+    flex: 1;
+    line-height: 1.3;
+  }}
+  .pipe-step.active {{
+    background: #1e3a8a;
+    color: #ffffff;
+    border-color: #1e3a8a;
+  }}
+  .pipe-arrow {{
+    color: #64748b;
+    font-weight: bold;
+    font-size: 13px;
+  }}
+
+  /* 모델 비교 표 */
+  table {{
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    font-size: 14px;
+  }}
+  th {{
+    background: #f1f5f9;
+    color: #0f172a;
+    font-weight: 700;
+    padding: 8px 6px;
+    border-top: 2px solid #334155;
+    border-bottom: 1.5px solid #94a3b8;
+    text-align: center;
+  }}
+  th:first-child, td:first-child {{
+    text-align: left;
+    padding-left: 10px;
+  }}
+  td {{
+    padding: 7px 6px;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: center;
+  }}
+  tr.selected-row {{
+    background-color: #dbeafe;
+    font-weight: 700;
+    color: #1e3a8a;
+  }}
+
+  /* 그림 2: 수평 막대 비교 차트 */
+  .metric-block {{
+    margin-bottom: 10px;
+  }}
+  .metric-header {{
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 4px;
+  }}
+  .h-bar-row {{
+    display: flex;
+    align-items: center;
+    margin-bottom: 4px;
+    font-size: 12.5px;
+  }}
+  .h-bar-label {{
+    width: 95px;
+    font-weight: 600;
+    color: #334155;
+  }}
+  .h-bar-track {{
+    flex-grow: 1;
+    background: #e2e8f0;
+    height: 14px;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-right: 8px;
+  }}
+  .h-bar-fill {{
+    height: 100%;
+    background: #64748b;
+  }}
+  .h-bar-fill.primary {{
+    background: #1d4ed8;
+  }}
+  .h-bar-val {{
+    width: 42px;
+    font-weight: 700;
+    color: #0f172a;
+    text-align: right;
+  }}
+
+  /* 그림 3: 혼동 행렬 2x2 그리드 */
+  .cm-grid {{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 6px;
+  }}
+  .cm-box {{
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 8px;
+  }}
+  .cm-box.selected {{
+    border: 2px solid #1d4ed8;
+    background: #eff6ff;
+  }}
+  .cm-title {{
+    font-size: 13.5px;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 5px;
+    text-align: center;
+  }}
+  .cm-cells {{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    text-align: center;
+    font-size: 12.5px;
+    font-weight: 700;
+  }}
+  .cell {{
+    padding: 8px 4px;
+    border-radius: 4px;
+  }}
+  .c-dark {{ background: #0f2952; color: #fff; }}
+  .c-med {{ background: #7da6c9; color: #0f172a; }}
+  .c-light {{ background: #cbdbe9; color: #0f172a; }}
+  .c-pale {{ background: #f1f5f9; color: #475569; }}
+
+  /* 섹션 5 & 6 본문 스타일 */
+  .reason-item {{
+    font-size: 14.8px;
+    line-height: 1.55;
+    color: #2d3748;
+    margin-bottom: 8px;
+    text-align: justify;
+  }}
+  .reason-item strong {{
+    color: #1e3a8a;
+  }}
+
+  /* 하단 참고문헌 */
+  .footer {{
+    border-top: 2px solid #94a3b8;
+    padding-top: 10px;
+    margin-top: 12px;
+    font-size: 12.5px;
+    color: #475569;
+    line-height: 1.45;
+  }}
+
+  /* 인쇄(PDF 저장) 시 A1 용지 최적화 */
+  @media print {{
+    body {{
+      background: none;
+      padding: 0;
+    }}
+    .poster-a1 {{
+      width: 594mm;
+      height: 841mm;
+      box-shadow: none;
+      padding: 22mm 24mm;
+    }}
+  }}
+</style>
+</head>
+<body>
+  <div class="poster-a1">
+    <div>
+      <!-- 헤더 -->
+      <div class="header">
+        <h1>{title}</h1>
+        <div class="team">{team_info}</div>
+        <div class="sub">{sub_info}</div>
+      </div>
+
+      <!-- 요약 박스 -->
+      <div class="summary-box">
+        <h2>요약 (Executive Summary)</h2>
+        <p><strong>연구 질문:</strong> {sum_q}</p>
+        <p><strong>데이터와 방법:</strong> {sum_m}</p>
+        <p><strong>핵심 결과:</strong> {sum_r}</p>
+        <p><strong>최종 결론:</strong> {sum_c}</p>
+      </div>
+
+      <!-- 본문 2단 그리드 -->
+      <div class="main-grid">
+        <!-- 왼쪽 컬럼 -->
+        <div>
+          <div class="section">
+            <div class="section-title">1. 서론</div>
+            <p class="body-text">{sec1_p1}</p>
+            <p class="body-text">{sec1_p2}</p>
+          </div>
+
+          <div class="section">
+            <div class="section-title">2. 데이터 및 탐색적 분석 (EDA)</div>
+            <p class="body-text">{sec2_p1}</p>
+            <div class="chart-card">
+              <div class="bar-group-contract">
+                <div class="c-bar-wrap">
+                  <div class="c-bar" style="height: 42px;">16.75%</div>
+                  <div class="c-label">1년</div>
+                </div>
+                <div class="c-bar-wrap">
+                  <div class="c-bar" style="height: 43px;">16.88%</div>
+                  <div class="c-label">2년</div>
+                </div>
+                <div class="c-bar-wrap">
+                  <div class="c-bar highlight" style="height: 112px;">46.56%</div>
+                  <div class="c-label">월 단위</div>
+                </div>
+              </div>
+              <div class="chart-caption">그림 1. 계약 형태별 고객 이탈률 비교 (고해상도 벡터 차트)<br>월 단위 계약의 이탈률(46.56%)이 1년(16.75%), 2년(16.88%) 약정 계약에 비해 현저하게 높음.</div>
+            </div>
+            <p class="body-text">{sec2_p2}</p>
+          </div>
+
+          <div class="section">
+            <div class="section-title">3. 분석 방법</div>
+            <p class="body-text">{sec3_p1}</p>
+            <div class="pipeline">
+              <div class="pipe-step">데이터 수집<br>Kaggle 100k</div>
+              <div class="pipe-arrow">→</div>
+              <div class="pipe-step">전처리<br>인코딩·분할</div>
+              <div class="pipe-arrow">→</div>
+              <div class="pipe-step">후보 모델<br>3종 알고리즘</div>
+              <div class="pipe-arrow">→</div>
+              <div class="pipe-step active">선택: 로지스틱 회귀<br>재현율 0.702</div>
+              <div class="pipe-arrow">→</div>
+              <div class="pipe-step">비즈니스 평가<br>혼동행렬 분석</div>
+            </div>
+            <p class="body-text">{sec3_p2}</p>
+          </div>
+        </div>
+
+        <!-- 오른쪽 컬럼 -->
+        <div>
+          <div class="section">
+            <div class="section-title">4. 모델 평가 결과</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>모델명</th>
+                  <th>재현율(Recall)</th>
+                  <th>F1-Score</th>
+                  <th>정밀도(Precision)</th>
+                  <th>정확도(Accuracy)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>베이스라인(최빈값)</td>
+                  <td>0.000</td>
+                  <td>0.000</td>
+                  <td>0.000</td>
+                  <td>0.669</td>
+                </tr>
+                <tr class="selected-row">
+                  <td>로지스틱 회귀 (최종 선택)</td>
+                  <td>0.702</td>
+                  <td>0.599</td>
+                  <td>0.522</td>
+                  <td>0.688</td>
+                </tr>
+                <tr>
+                  <td>의사결정 트리</td>
+                  <td>0.618</td>
+                  <td>0.625</td>
+                  <td>0.631</td>
+                  <td>0.754</td>
+                </tr>
+                <tr>
+                  <td>랜덤 포레스트</td>
+                  <td>0.629</td>
+                  <td>0.625</td>
+                  <td>0.621</td>
+                  <td>0.750</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="chart-card">
+              <div class="metric-block">
+                <div class="metric-header">재현율 (Recall)</div>
+                <div class="h-bar-row"><div class="h-bar-label">로지스틱 회귀</div><div class="h-bar-track"><div class="h-bar-fill primary" style="width:70.2%"></div></div><div class="h-bar-val">0.702</div></div>
+                <div class="h-bar-row"><div class="h-bar-label">의사결정트리</div><div class="h-bar-track"><div class="h-bar-fill" style="width:61.8%"></div></div><div class="h-bar-val">0.618</div></div>
+                <div class="h-bar-row"><div class="h-bar-label">랜덤포레스트</div><div class="h-bar-track"><div class="h-bar-fill" style="width:62.9%"></div></div><div class="h-bar-val">0.629</div></div>
+              </div>
+              <div class="metric-block" style="margin-bottom:0;">
+                <div class="metric-header">정확도 (Accuracy)</div>
+                <div class="h-bar-row"><div class="h-bar-label">베이스라인</div><div class="h-bar-track"><div class="h-bar-fill" style="width:66.9%"></div></div><div class="h-bar-val">0.669</div></div>
+                <div class="h-bar-row"><div class="h-bar-label">로지스틱 회귀</div><div class="h-bar-track"><div class="h-bar-fill primary" style="width:68.8%"></div></div><div class="h-bar-val">0.688</div></div>
+                <div class="h-bar-row"><div class="h-bar-label">의사결정트리</div><div class="h-bar-track"><div class="h-bar-fill" style="width:75.4%"></div></div><div class="h-bar-val">0.754</div></div>
+                <div class="h-bar-row"><div class="h-bar-label">랜덤포레스트</div><div class="h-bar-track"><div class="h-bar-fill" style="width:75.0%"></div></div><div class="h-bar-val">0.750</div></div>
+              </div>
+              <div class="chart-caption">그림 2. 주요 성능 지표 비교 (선명한 벡터 그래픽) - 로지스틱 회귀가 이탈자 감지의 핵심인 재현율(0.702)에서 최우수 성과 기록.</div>
+            </div>
+
+            <div class="cm-grid">
+              <div class="cm-box">
+                <div class="cm-title">베이스라인</div>
+                <div class="cm-cells">
+                  <div class="cell c-dark">13.37k</div>
+                  <div class="cell c-pale">0</div>
+                  <div class="cell c-med">6,629</div>
+                  <div class="cell c-pale">0</div>
+                </div>
+              </div>
+              <div class="cm-box selected">
+                <div class="cm-title">로지스틱 회귀</div>
+                <div class="cm-cells">
+                  <div class="cell c-dark">9,115</div>
+                  <div class="cell c-light">4,256</div>
+                  <div class="cell c-pale">1,977</div>
+                  <div class="cell c-med">4,652</div>
+                </div>
+              </div>
+              <div class="cm-box">
+                <div class="cm-title">의사결정트리</div>
+                <div class="cm-cells">
+                  <div class="cell c-dark">10.98k</div>
+                  <div class="cell c-pale">2,393</div>
+                  <div class="cell c-pale">2,530</div>
+                  <div class="cell c-light">4,099</div>
+                </div>
+              </div>
+              <div class="cm-box">
+                <div class="cm-title">랜덤 포레스트</div>
+                <div class="cm-cells">
+                  <div class="cell c-dark">10.83k</div>
+                  <div class="cell c-pale">2,544</div>
+                  <div class="cell c-pale">2,461</div>
+                  <div class="cell c-light">4,168</div>
+                </div>
+              </div>
+            </div>
+            <div class="chart-caption">그림 3. 모델별 혼동 행렬 (Confusion Matrix) 비교 (선명한 벡터 그리드)<br>로지스틱 회귀가 실제 이탈 고객 6,629명 중 가장 많은 4,652명(TP)을 올바르게 포착함.</div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">5. 모델 선택 이유 및 논의</div>
+            <div class="reason-item"><strong>① 재현율 최우선 고려:</strong> {sec5_1}</div>
+            <div class="reason-item"><strong>② 정밀도 및 정확도:</strong> {sec5_2}</div>
+            <div class="reason-item"><strong>③ 선제적 방어 마케팅 가능:</strong> {sec5_3}</div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">6. 한계 및 분석 결과</div>
+            <div class="reason-item"><strong>프로젝트의 한계 및 향후 과제:</strong> {sec6_limit}</div>
+            <div class="reason-item"><strong>분석 결과:</strong> {sec6_result}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 하단 참고문헌 -->
+    <div class="footer">
+      <strong>참고문헌 및 출처:</strong> Kaggle Telco Customer Churn Dataset (https://www.kaggle.com/datasets/dhrubangtalukdar/telco-customer-churn-data) | 통신사 고객 이탈 데이터 분석 학술 포스터
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+components.html(poster_html, height=1750, scrolling=True)
